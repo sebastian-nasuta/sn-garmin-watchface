@@ -76,8 +76,8 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         // 4. Steps + Minimalist Progress Bar
         drawSteps(dc, cx, w, h);
 
-        // 5. Bottom: Battery
-        drawBattery(dc, cx, h);
+        // 5. Bottom: Notifications + Battery
+        drawStatusRow(dc, cx, h);
     }
 
     function onHide() as Void {
@@ -155,13 +155,21 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         }
 
         var labelY = (h * 0.72).toNumber();
+        var stepsText = steps.toString();
+        var iconW = 16;
+        var gap = 7;
+        var textW = dc.getTextWidthInPixels(stepsText, Graphics.FONT_XTINY);
+        var startX = cx - ((iconW + gap + textW) / 2);
+
+        drawStepsIcon(dc, startX, labelY);
+
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            cx,
+            startX + iconW + gap,
             labelY,
             Graphics.FONT_XTINY,
-            steps.toString() + " STEPS",
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+            stepsText,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
         );
 
         var barW = (w * 0.42).toNumber();
@@ -180,40 +188,95 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         }
     }
 
-    private function drawBattery(dc as Dc, cx as Number, h as Number) as Void {
+    private function drawStatusRow(dc as Dc, cx as Number, h as Number) as Void {
+        var settings = System.getDeviceSettings();
+        var notifications = (settings.notificationCount != null) ? (settings.notificationCount as Number) : 0;
+        var notifText = notifications.toString();
+
         var stats = System.getSystemStats();
         var battery = stats.battery.toNumber();
+        var batText = battery.toString() + "%";
+
         var y = (h * 0.86).toNumber();
-
-        // Compact battery icon + percentage centered
-        var iconW = 22;
-        var iconH = 11;
         var gap = 6;
-        var text = battery.toString() + "%";
-        var textW = dc.getTextWidthInPixels(text, Graphics.FONT_XTINY);
-        var totalW = iconW + gap + textW;
-        var startX = cx - (totalW / 2);
-        var iconY = y - (iconH / 2);
+        var sep = "  ·  ";
 
+        var notifIconW = 14;
+        var notifTextW = dc.getTextWidthInPixels(notifText, Graphics.FONT_XTINY);
+        var sepW = dc.getTextWidthInPixels(sep, Graphics.FONT_XTINY);
+        var batIconW = 22;
+        var batIconH = 11;
+        var batTextW = dc.getTextWidthInPixels(batText, Graphics.FONT_XTINY);
+
+        var totalW = notifIconW + gap + notifTextW + sepW + batIconW + gap + batTextW;
+        var x = cx - (totalW / 2);
+
+        // Notifications icon (envelope) + count
+        var notifIconColor = (notifications > 0) ? COLOR_ACCENT : COLOR_MUTED;
+        var notifTextColor = (notifications > 0) ? Graphics.COLOR_WHITE : COLOR_MUTED;
+        drawNotificationIcon(dc, x, y, notifIconColor);
+        x += notifIconW + gap;
+
+        dc.setColor(notifTextColor, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            x,
+            y,
+            Graphics.FONT_XTINY,
+            notifText,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
+        );
+        x += notifTextW;
+
+        // Separator
         dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
-        dc.drawRectangle(startX, iconY, iconW - 2, iconH);
-        dc.fillRectangle(startX + iconW - 2, iconY + 3, 2, iconH - 6);
+        dc.drawText(
+            x,
+            y,
+            Graphics.FONT_XTINY,
+            sep,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
+        );
+        x += sepW;
 
-        var innerW = ((iconW - 6) * battery / 100.0).toNumber();
+        // Battery icon + percentage
+        var batIconY = y - (batIconH / 2);
+        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+        dc.drawRectangle(x, batIconY, batIconW - 2, batIconH);
+        dc.fillRectangle(x + batIconW - 2, batIconY + 3, 2, batIconH - 6);
+
+        var innerW = ((batIconW - 6) * battery / 100.0).toNumber();
         if (innerW > 0) {
             var batColor = (battery <= 20) ? COLOR_ACCENT : Graphics.COLOR_WHITE;
             dc.setColor(batColor, Graphics.COLOR_TRANSPARENT);
-            dc.fillRectangle(startX + 2, iconY + 2, innerW, iconH - 4);
+            dc.fillRectangle(x + 2, batIconY + 2, innerW, batIconH - 4);
         }
+        x += batIconW + gap;
 
         dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            startX + iconW + gap,
+            x,
             y,
             Graphics.FONT_XTINY,
-            text,
+            batText,
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
         );
+    }
+
+    private function drawNotificationIcon(dc as Dc, x as Number, cy as Number, color as Number) as Void {
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.drawRectangle(x, cy - 5, 14, 10);
+        dc.drawLine(x, cy - 5, x + 7, cy + 1);
+        dc.drawLine(x + 13, cy - 5, x + 7, cy + 1);
+    }
+
+    private function drawStepsIcon(dc as Dc, x as Number, cy as Number) as Void {
+        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+        // Left footprint
+        dc.fillEllipse(x + 4, cy - 3, 3, 4);
+        dc.fillCircle(x + 4, cy + 4, 2);
+        // Right footprint
+        dc.fillEllipse(x + 12, cy, 3, 4);
+        dc.fillCircle(x + 12, cy + 7, 2);
     }
 
 }
