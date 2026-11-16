@@ -1,0 +1,16 @@
+# Connect IQ build artifacts
+bin/
+*.prg
+*.iq
+*.mir
+*.debug.xml
+*.prg.debug.xml
+
+# Developer signing key (never commit!)
+*.der
+developer_key*
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+<resources>
+    <bitmap id="LauncherIcon" filename="launcher_icon.png" />
+    <bitmap id="SnLogo" filename="sn_logo.png" />
+</resources>
