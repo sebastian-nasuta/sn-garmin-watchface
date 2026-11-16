@@ -45,8 +45,8 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         }
 
         // 1. Top: Notifications + Alarms (left) + SN Logo (center) + Battery (right)
-        var logoY = (h * 0.10).toNumber();
-        var topCenterY = logoY + 32;
+        var logoY = (h * 0.085).toNumber();
+        var topCenterY = logoY + 40;
         var leftRightEdgeX = cx - 50;
         var batX = cx + 50;
         if (_logo != null) {
@@ -58,8 +58,8 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             leftRightEdgeX = cx - halfLogoW - 18;
             batX = cx + halfLogoW + 18;
         }
-        drawNotifications(dc, leftRightEdgeX, topCenterY - 13);
-        drawAlarms(dc, leftRightEdgeX, topCenterY + 13);
+        drawNotifications(dc, leftRightEdgeX, topCenterY - 14);
+        drawAlarms(dc, leftRightEdgeX, topCenterY + 14);
         drawBattery(dc, batX, topCenterY);
 
         // 2. Center: Digital Time
@@ -166,12 +166,13 @@ class SnWatchFaceView extends WatchUi.WatchFace {
 
         var labelY = (h * 0.71).toNumber();
         var stepsText = steps.toString();
-        var iconW = 16;
-        var gap = 7;
+        var iconH = getIconHeight(dc);
+        var iconW = iconH;
+        var gap = 8;
         var textW = dc.getTextWidthInPixels(stepsText, Graphics.FONT_XTINY);
         var startX = cx - ((iconW + gap + textW) / 2);
 
-        drawStepsIcon(dc, startX, labelY);
+        drawStepsIcon(dc, startX, labelY, iconW, iconH);
 
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
@@ -203,12 +204,13 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         }
 
         var labelY = (h * 0.83).toNumber();
-        var iconW = 14;
-        var gap = 6;
+        var iconH = getIconHeight(dc);
+        var iconW = (iconH * 1.25).toNumber();
+        var gap = 7;
         var textW = dc.getTextWidthInPixels(stressText, Graphics.FONT_XTINY);
         var x = cx - ((iconW + gap + textW) / 2);
 
-        drawStressIcon(dc, x, labelY, stressColor);
+        drawStressIcon(dc, x, labelY, iconW, iconH, stressColor);
 
         dc.setColor(stressColor, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
@@ -245,14 +247,15 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         var notifications = (settings.notificationCount != null) ? (settings.notificationCount as Number) : 0;
         var notifText = notifications.toString();
 
-        var iconW = 14;
-        var gap = 6;
+        var iconH = getIconHeight(dc);
+        var iconW = (iconH * 1.35).toNumber();
+        var gap = 7;
         var textW = dc.getTextWidthInPixels(notifText, Graphics.FONT_XTINY);
         var x = rightEdgeX - (iconW + gap + textW);
 
         var iconColor = (notifications > 0) ? COLOR_ACCENT : COLOR_MUTED;
         var textColor = (notifications > 0) ? Graphics.COLOR_WHITE : COLOR_MUTED;
-        drawNotificationIcon(dc, x, cy, iconColor);
+        drawNotificationIcon(dc, x, cy, iconW, iconH, iconColor);
 
         dc.setColor(textColor, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
@@ -269,14 +272,15 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         var alarms = (settings.alarmCount != null) ? (settings.alarmCount as Number) : 0;
         var alarmText = alarms.toString();
 
-        var iconW = 14;
-        var gap = 6;
+        var iconH = getIconHeight(dc);
+        var iconW = iconH + 2;
+        var gap = 7;
         var textW = dc.getTextWidthInPixels(alarmText, Graphics.FONT_XTINY);
         var x = rightEdgeX - (iconW + gap + textW);
 
         var iconColor = (alarms > 0) ? 0xF59E0B : COLOR_MUTED;
         var textColor = (alarms > 0) ? Graphics.COLOR_WHITE : COLOR_MUTED;
-        drawAlarmIcon(dc, x, cy, iconColor);
+        drawAlarmIcon(dc, x, cy, iconW, iconH, iconColor);
 
         dc.setColor(textColor, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
@@ -288,13 +292,22 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         );
     }
 
-    private function drawAlarmIcon(dc as Dc, x as Number, cy as Number, color as Number) as Void {
+    private function drawAlarmIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, color as Number) as Void {
+        var r = ((h - 4) / 2).toNumber();
+        var cx = x + (w / 2);
+        var bodyY = cy + 1;
+
         dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        dc.drawCircle(x + 7, cy + 1, 5);
-        dc.drawLine(x + 7, cy + 1, x + 7, cy - 2);
-        dc.drawLine(x + 7, cy + 1, x + 9, cy + 1);
-        dc.drawLine(x + 2, cy - 5, x + 4, cy - 3);
-        dc.drawLine(x + 12, cy - 5, x + 10, cy - 3);
+        dc.setPenWidth(2);
+        // Clean clock face
+        dc.drawCircle(cx, bodyY, r);
+        // Minimalist 12:15 hands
+        dc.drawLine(cx, bodyY, cx, bodyY - (r * 0.55).toNumber());
+        dc.drawLine(cx, bodyY, cx + (r * 0.50).toNumber(), bodyY);
+        // Detached symmetrical top alarm ears
+        dc.drawLine(cx - r - 2, bodyY - r + 1, cx - r + 1, bodyY - r - 2);
+        dc.drawLine(cx + r + 2, bodyY - r + 1, cx + r - 1, bodyY - r - 2);
+        dc.setPenWidth(1);
     }
 
     private function drawBattery(dc as Dc, x as Number, cy as Number) as Void {
@@ -302,9 +315,9 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         var battery = stats.battery.toNumber();
         var batText = battery.toString() + "%";
 
-        var gap = 6;
-        var batIconW = 22;
-        var batIconH = 11;
+        var gap = 7;
+        var batIconH = getIconHeight(dc);
+        var batIconW = (batIconH * 1.75).toNumber();
 
         var batColor = 0x84CC16; // > 50% warm green
         if (battery <= 20) {
@@ -316,12 +329,15 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         // Battery icon + percentage
         var batIconY = cy - (batIconH / 2);
         dc.setColor(batColor, Graphics.COLOR_TRANSPARENT);
-        dc.drawRectangle(x, batIconY, batIconW - 2, batIconH);
-        dc.fillRectangle(x + batIconW - 2, batIconY + 3, 2, batIconH - 6);
+        dc.setPenWidth(2);
+        dc.drawRectangle(x, batIconY, batIconW - 3, batIconH);
+        dc.setPenWidth(1);
+        dc.fillRectangle(x + batIconW - 3, batIconY + (batIconH * 0.28).toNumber(), 3, (batIconH * 0.44).toNumber());
 
-        var innerW = ((batIconW - 6) * battery / 100.0).toNumber();
+        var maxInnerW = batIconW - 9;
+        var innerW = (maxInnerW * battery / 100.0).toNumber();
         if (innerW > 0) {
-            dc.fillRectangle(x + 2, batIconY + 2, innerW, batIconH - 4);
+            dc.fillRectangle(x + 3, batIconY + 3, innerW, batIconH - 6);
         }
 
         dc.setColor((battery <= 20) ? COLOR_ACCENT : COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
@@ -334,30 +350,48 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         );
     }
 
-    private function drawNotificationIcon(dc as Dc, x as Number, cy as Number, color as Number) as Void {
+    private function drawNotificationIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, color as Number) as Void {
+        var top = cy - (h / 2);
         dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        dc.drawRectangle(x, cy - 5, 14, 10);
-        dc.drawLine(x, cy - 5, x + 7, cy + 1);
-        dc.drawLine(x + 13, cy - 5, x + 7, cy + 1);
+        dc.setPenWidth(2);
+        dc.drawRectangle(x, top, w, h);
+        dc.drawLine(x, top, x + (w / 2), cy + 1);
+        dc.drawLine(x + w - 1, top, x + (w / 2), cy + 1);
+        dc.setPenWidth(1);
     }
 
-    private function drawStressIcon(dc as Dc, x as Number, cy as Number, color as Number) as Void {
+    private function drawStressIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, color as Number) as Void {
+        var halfH = (h / 2).toNumber();
         dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(x, cy + 1, x + 3, cy + 1);
-        dc.drawLine(x + 3, cy + 1, x + 5, cy - 5);
-        dc.drawLine(x + 5, cy - 5, x + 8, cy + 5);
-        dc.drawLine(x + 8, cy + 5, x + 11, cy - 2);
-        dc.drawLine(x + 11, cy - 2, x + 14, cy + 1);
+        dc.setPenWidth(2);
+        dc.drawLine(x, cy + 1, x + (w * 0.22).toNumber(), cy + 1);
+        dc.drawLine(x + (w * 0.22).toNumber(), cy + 1, x + (w * 0.38).toNumber(), cy - halfH + 1);
+        dc.drawLine(x + (w * 0.38).toNumber(), cy - halfH + 1, x + (w * 0.60).toNumber(), cy + halfH - 1);
+        dc.drawLine(x + (w * 0.60).toNumber(), cy + halfH - 1, x + (w * 0.78).toNumber(), cy - (halfH * 0.4).toNumber());
+        dc.drawLine(x + (w * 0.78).toNumber(), cy - (halfH * 0.4).toNumber(), x + w, cy + 1);
+        dc.setPenWidth(1);
     }
 
-    private function drawStepsIcon(dc as Dc, x as Number, cy as Number) as Void {
+    private function drawStepsIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number) as Void {
+        var rx = (w * 0.18).toNumber();
+        var ry = (h * 0.26).toNumber();
+        var heelR = (w * 0.13).toNumber();
+        if (rx < 2) { rx = 2; }
+        if (ry < 3) { ry = 3; }
+        if (heelR < 2) { heelR = 2; }
+
         dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
         // Left footprint
-        dc.fillEllipse(x + 4, cy - 3, 3, 4);
-        dc.fillCircle(x + 4, cy + 4, 2);
+        dc.fillEllipse(x + (w * 0.28).toNumber(), cy - (h * 0.20).toNumber(), rx, ry);
+        dc.fillCircle(x + (w * 0.28).toNumber(), cy + (h * 0.25).toNumber(), heelR);
         // Right footprint
-        dc.fillEllipse(x + 12, cy, 3, 4);
-        dc.fillCircle(x + 12, cy + 7, 2);
+        dc.fillEllipse(x + (w * 0.72).toNumber(), cy + (h * 0.02).toNumber(), rx, ry);
+        dc.fillCircle(x + (w * 0.72).toNumber(), cy + (h * 0.44).toNumber(), heelR);
+    }
+
+    private function getIconHeight(dc as Dc) as Number {
+        var h = (dc.getFontHeight(Graphics.FONT_XTINY) * 0.56).toNumber();
+        return (h < 12) ? 12 : h;
     }
 
 }
