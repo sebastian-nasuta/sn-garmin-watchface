@@ -44,13 +44,23 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             return;
         }
 
-        // 1. Top: SN Logo
+        // 1. Top: Notifications + Alarms (left) + SN Logo (center) + Battery (right)
+        var logoY = (h * 0.10).toNumber();
+        var topCenterY = logoY + 32;
+        var leftRightEdgeX = cx - 50;
+        var batX = cx + 50;
         if (_logo != null) {
             var logo = _logo as WatchUi.BitmapResource;
-            var logoX = cx - (logo.getWidth() / 2);
-            var logoY = (h * 0.10).toNumber();
+            var halfLogoW = logo.getWidth() / 2;
+            var logoX = cx - halfLogoW;
             dc.drawBitmap(logoX, logoY, logo);
+            topCenterY = logoY + (logo.getHeight() / 2);
+            leftRightEdgeX = cx - halfLogoW - 18;
+            batX = cx + halfLogoW + 18;
         }
+        drawNotifications(dc, leftRightEdgeX, topCenterY - 13);
+        drawAlarms(dc, leftRightEdgeX, topCenterY + 13);
+        drawBattery(dc, batX, topCenterY);
 
         // 2. Center: Digital Time
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
@@ -76,8 +86,8 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         // 4. Steps + Minimalist Progress Bar
         drawSteps(dc, cx, w, h);
 
-        // 5. Bottom: Notifications + Battery
-        drawStatusRow(dc, cx, h);
+        // 5. Bottom: Stress + Minimalist Progress Bar
+        drawStress(dc, cx, w, h);
     }
 
     function onHide() as Void {
@@ -154,7 +164,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             ratio = 1.0;
         }
 
-        var labelY = (h * 0.72).toNumber();
+        var labelY = (h * 0.71).toNumber();
         var stepsText = steps.toString();
         var iconW = 16;
         var gap = 7;
@@ -172,90 +182,152 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
         );
 
-        var barW = (w * 0.42).toNumber();
+        var fillColor = (ratio >= 1.0) ? Graphics.COLOR_WHITE : COLOR_ACCENT;
+        drawProgressBar(dc, cx, (h * 0.75).toNumber(), (w * 0.42).toNumber(), ratio, fillColor);
+    }
+
+    private function drawStress(dc as Dc, cx as Number, w as Number, h as Number) as Void {
+        var actInfo = ActivityMonitor.getInfo();
+        var stress = actInfo.stressScore;
+        var hasStress = (stress != null && (stress as Number) >= 0);
+        var stressVal = hasStress ? (stress as Number) : 0;
+        var stressText = hasStress ? stressVal.toString() : "--";
+
+        var stressColor = COLOR_MUTED;
+        if (hasStress) {
+            if (stressVal >= 75) {
+                stressColor = COLOR_ACCENT;
+            } else if (stressVal > 25) {
+                stressColor = Graphics.COLOR_WHITE;
+            }
+        }
+
+        var labelY = (h * 0.83).toNumber();
+        var iconW = 14;
+        var gap = 6;
+        var textW = dc.getTextWidthInPixels(stressText, Graphics.FONT_XTINY);
+        var x = cx - ((iconW + gap + textW) / 2);
+
+        drawStressIcon(dc, x, labelY, stressColor);
+
+        dc.setColor(stressColor, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            x + iconW + gap,
+            labelY,
+            Graphics.FONT_XTINY,
+            stressText,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
+        );
+
+        var ratio = hasStress ? (stressVal.toFloat() / 100.0) : 0.0;
+        if (ratio > 1.0) {
+            ratio = 1.0;
+        }
+        drawProgressBar(dc, cx, (h * 0.87).toNumber(), (w * 0.28).toNumber(), ratio, stressColor);
+    }
+
+    private function drawProgressBar(dc as Dc, cx as Number, barY as Number, barW as Number, ratio as Float, fillColor as Number) as Void {
         var barH = 4;
         var barX = cx - (barW / 2);
-        var barY = (h * 0.77).toNumber();
 
         dc.setColor(COLOR_TRACK, Graphics.COLOR_TRANSPARENT);
         dc.fillRoundedRectangle(barX, barY, barW, barH, 2);
 
         var fillW = (barW * ratio).toNumber();
         if (fillW > 0) {
-            var fillColor = (ratio >= 1.0) ? Graphics.COLOR_WHITE : COLOR_ACCENT;
             dc.setColor(fillColor, Graphics.COLOR_TRANSPARENT);
             dc.fillRoundedRectangle(barX, barY, fillW, barH, 2);
         }
     }
 
-    private function drawStatusRow(dc as Dc, cx as Number, h as Number) as Void {
+    private function drawNotifications(dc as Dc, rightEdgeX as Number, cy as Number) as Void {
         var settings = System.getDeviceSettings();
         var notifications = (settings.notificationCount != null) ? (settings.notificationCount as Number) : 0;
         var notifText = notifications.toString();
 
-        var stats = System.getSystemStats();
-        var battery = stats.battery.toNumber();
-        var batText = battery.toString() + "%";
-
-        var y = (h * 0.86).toNumber();
+        var iconW = 14;
         var gap = 6;
-        var sep = "  ·  ";
+        var textW = dc.getTextWidthInPixels(notifText, Graphics.FONT_XTINY);
+        var x = rightEdgeX - (iconW + gap + textW);
 
-        var notifIconW = 14;
-        var notifTextW = dc.getTextWidthInPixels(notifText, Graphics.FONT_XTINY);
-        var sepW = dc.getTextWidthInPixels(sep, Graphics.FONT_XTINY);
-        var batIconW = 22;
-        var batIconH = 11;
-        var batTextW = dc.getTextWidthInPixels(batText, Graphics.FONT_XTINY);
+        var iconColor = (notifications > 0) ? COLOR_ACCENT : COLOR_MUTED;
+        var textColor = (notifications > 0) ? Graphics.COLOR_WHITE : COLOR_MUTED;
+        drawNotificationIcon(dc, x, cy, iconColor);
 
-        var totalW = notifIconW + gap + notifTextW + sepW + batIconW + gap + batTextW;
-        var x = cx - (totalW / 2);
-
-        // Notifications icon (envelope) + count
-        var notifIconColor = (notifications > 0) ? COLOR_ACCENT : COLOR_MUTED;
-        var notifTextColor = (notifications > 0) ? Graphics.COLOR_WHITE : COLOR_MUTED;
-        drawNotificationIcon(dc, x, y, notifIconColor);
-        x += notifIconW + gap;
-
-        dc.setColor(notifTextColor, Graphics.COLOR_TRANSPARENT);
+        dc.setColor(textColor, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            x,
-            y,
+            x + iconW + gap,
+            cy,
             Graphics.FONT_XTINY,
             notifText,
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
         );
-        x += notifTextW;
+    }
 
-        // Separator
-        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+    private function drawAlarms(dc as Dc, rightEdgeX as Number, cy as Number) as Void {
+        var settings = System.getDeviceSettings();
+        var alarms = (settings.alarmCount != null) ? (settings.alarmCount as Number) : 0;
+        var alarmText = alarms.toString();
+
+        var iconW = 14;
+        var gap = 6;
+        var textW = dc.getTextWidthInPixels(alarmText, Graphics.FONT_XTINY);
+        var x = rightEdgeX - (iconW + gap + textW);
+
+        var iconColor = (alarms > 0) ? 0xF59E0B : COLOR_MUTED;
+        var textColor = (alarms > 0) ? Graphics.COLOR_WHITE : COLOR_MUTED;
+        drawAlarmIcon(dc, x, cy, iconColor);
+
+        dc.setColor(textColor, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            x,
-            y,
+            x + iconW + gap,
+            cy,
             Graphics.FONT_XTINY,
-            sep,
+            alarmText,
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
         );
-        x += sepW;
+    }
+
+    private function drawAlarmIcon(dc as Dc, x as Number, cy as Number, color as Number) as Void {
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.drawCircle(x + 7, cy + 1, 5);
+        dc.drawLine(x + 7, cy + 1, x + 7, cy - 2);
+        dc.drawLine(x + 7, cy + 1, x + 9, cy + 1);
+        dc.drawLine(x + 2, cy - 5, x + 4, cy - 3);
+        dc.drawLine(x + 12, cy - 5, x + 10, cy - 3);
+    }
+
+    private function drawBattery(dc as Dc, x as Number, cy as Number) as Void {
+        var stats = System.getSystemStats();
+        var battery = stats.battery.toNumber();
+        var batText = battery.toString() + "%";
+
+        var gap = 6;
+        var batIconW = 22;
+        var batIconH = 11;
+
+        var batColor = 0x84CC16; // > 50% warm green
+        if (battery <= 20) {
+            batColor = COLOR_ACCENT; // <= 20% red
+        } else if (battery <= 50) {
+            batColor = 0xF59E0B; // 21-50% amber
+        }
 
         // Battery icon + percentage
-        var batIconY = y - (batIconH / 2);
-        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+        var batIconY = cy - (batIconH / 2);
+        dc.setColor(batColor, Graphics.COLOR_TRANSPARENT);
         dc.drawRectangle(x, batIconY, batIconW - 2, batIconH);
         dc.fillRectangle(x + batIconW - 2, batIconY + 3, 2, batIconH - 6);
 
         var innerW = ((batIconW - 6) * battery / 100.0).toNumber();
         if (innerW > 0) {
-            var batColor = (battery <= 20) ? COLOR_ACCENT : Graphics.COLOR_WHITE;
-            dc.setColor(batColor, Graphics.COLOR_TRANSPARENT);
             dc.fillRectangle(x + 2, batIconY + 2, innerW, batIconH - 4);
         }
-        x += batIconW + gap;
 
-        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+        dc.setColor((battery <= 20) ? COLOR_ACCENT : COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            x,
-            y,
+            x + batIconW + gap,
+            cy,
             Graphics.FONT_XTINY,
             batText,
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
@@ -267,6 +339,15 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         dc.drawRectangle(x, cy - 5, 14, 10);
         dc.drawLine(x, cy - 5, x + 7, cy + 1);
         dc.drawLine(x + 13, cy - 5, x + 7, cy + 1);
+    }
+
+    private function drawStressIcon(dc as Dc, x as Number, cy as Number, color as Number) as Void {
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.drawLine(x, cy + 1, x + 3, cy + 1);
+        dc.drawLine(x + 3, cy + 1, x + 5, cy - 5);
+        dc.drawLine(x + 5, cy - 5, x + 8, cy + 5);
+        dc.drawLine(x + 8, cy + 5, x + 11, cy - 2);
+        dc.drawLine(x + 11, cy - 2, x + 14, cy + 1);
     }
 
     private function drawStepsIcon(dc as Dc, x as Number, cy as Number) as Void {
