@@ -44,11 +44,11 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             return;
         }
 
-        // 1. Top: Notifications + Alarms (left) + SN Logo (center) + Battery (right)
+        // 1. Top: Notifications + Alarms (left) | SN Logo (center) | Battery (right)
         var logoY = (h * 0.085).toNumber();
         var topCenterY = logoY + 40;
-        var leftRightEdgeX = cx - 50;
-        var batX = cx + 50;
+        var leftRightEdgeX = cx - 58;
+        var rightStartX = cx + 58;
         if (_logo != null) {
             var logo = _logo as WatchUi.BitmapResource;
             var halfLogoW = logo.getWidth() / 2;
@@ -56,11 +56,11 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             dc.drawBitmap(logoX, logoY, logo);
             topCenterY = logoY + (logo.getHeight() / 2);
             leftRightEdgeX = cx - halfLogoW - 18;
-            batX = cx + halfLogoW + 18;
+            rightStartX = cx + halfLogoW + 18;
         }
         drawNotifications(dc, leftRightEdgeX, topCenterY - 14);
         drawAlarms(dc, leftRightEdgeX, topCenterY + 14);
-        drawBattery(dc, batX, topCenterY);
+        drawBattery(dc, rightStartX, topCenterY);
 
         // 2. Center: Digital Time
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
@@ -72,16 +72,8 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
         );
 
-        // 3. Below Time: Date + Weather
-        var infoLine = formatDate() + "  ·  " + formatTemperature();
-        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            cx,
-            (h * 0.62).toNumber(),
-            Graphics.FONT_SMALL,
-            infoLine,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
-        );
+        // 3. Below Time: Date + Weather Icon + Temp
+        drawDateAndWeather(dc, cx, (h * 0.62).toNumber());
 
         // 4. Steps + Minimalist Progress Bar
         drawSteps(dc, cx, w, h);
@@ -140,8 +132,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         ]);
     }
 
-    private function formatTemperature() as String {
-        var conditions = Weather.getCurrentConditions();
+    private function formatTemperature(conditions as Weather.CurrentConditions?) as String {
         if (conditions == null || conditions.temperature == null) {
             return "--°";
         }
@@ -154,6 +145,154 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         return tempC.toNumber().toString() + "°C";
     }
 
+    private function drawDateAndWeather(dc as Dc, cx as Number, cy as Number) as Void {
+        var dateText = formatDate();
+        var conditions = Weather.getCurrentConditions();
+        var tempText = formatTemperature(conditions);
+        var condition = (conditions != null && conditions.condition != null) ? (conditions.condition as Number) : -1;
+
+        var font = Graphics.FONT_SMALL;
+        var iconH = (dc.getFontHeight(font) * 0.56).toNumber();
+        if (iconH < 14) { iconH = 14; }
+        var iconW = (iconH * 1.35).toNumber();
+        var sectionGap = 14;
+        var iconGap = 7;
+
+        var dateW = dc.getTextWidthInPixels(dateText, font);
+        var tempW = dc.getTextWidthInPixels(tempText, font);
+        var totalW = dateW + sectionGap + iconW + iconGap + tempW;
+        var x = cx - (totalW / 2);
+
+        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            x,
+            cy,
+            font,
+            dateText,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
+        );
+        x += dateW + sectionGap;
+
+        drawWeatherIcon(dc, x, cy, iconW, iconH, condition);
+        x += iconW + iconGap;
+
+        dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            x,
+            cy,
+            font,
+            tempText,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
+        );
+    }
+
+    private function drawWeatherIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, condition as Number) as Void {
+        var cx = x + (w / 2);
+
+        // Clear / Sunny
+        if (condition == Weather.CONDITION_CLEAR ||
+            condition == Weather.CONDITION_FAIR ||
+            condition == Weather.CONDITION_MOSTLY_CLEAR) {
+            var r = (h * 0.28).toNumber();
+            if (r < 3) { r = 3; }
+            dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
+            dc.fillCircle(cx, cy, r);
+            dc.setPenWidth(2);
+            var rayOut = (h * 0.48).toNumber();
+            var rayIn = r + 2;
+            dc.drawLine(cx, cy - rayOut, cx, cy - rayIn);
+            dc.drawLine(cx, cy + rayIn, cx, cy + rayOut);
+            dc.drawLine(cx - rayOut, cy, cx - rayIn, cy);
+            dc.drawLine(cx + rayIn, cy, cx + rayOut, cy);
+            dc.setPenWidth(1);
+            return;
+        }
+
+        // Partly Cloudy
+        if (condition == Weather.CONDITION_PARTLY_CLOUDY ||
+            condition == Weather.CONDITION_PARTLY_CLEAR ||
+            condition == Weather.CONDITION_MOSTLY_CLOUDY) {
+            dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
+            dc.fillCircle(x + (w * 0.68).toNumber(), cy - (h * 0.22).toNumber(), (h * 0.22).toNumber());
+            drawCloudShape(dc, cx - 1, cy + 2, w - 2, (h * 0.72).toNumber(), Graphics.COLOR_WHITE);
+            return;
+        }
+
+        // Rain / Showers
+        if (condition == Weather.CONDITION_RAIN ||
+            condition == Weather.CONDITION_LIGHT_RAIN ||
+            condition == Weather.CONDITION_HEAVY_RAIN ||
+            condition == Weather.CONDITION_SHOWERS ||
+            condition == Weather.CONDITION_LIGHT_SHOWERS ||
+            condition == Weather.CONDITION_HEAVY_SHOWERS ||
+            condition == Weather.CONDITION_CHANCE_OF_SHOWERS) {
+            drawCloudShape(dc, cx, cy - 2, w, (h * 0.65).toNumber(), COLOR_MUTED);
+            dc.setColor(0x38BDF8, Graphics.COLOR_TRANSPARENT);
+            dc.setPenWidth(2);
+            var dropTop = cy + 2;
+            var dropBot = cy + (h / 2);
+            dc.drawLine(cx - 4, dropTop, cx - 6, dropBot);
+            dc.drawLine(cx + 1, dropTop, cx - 1, dropBot);
+            dc.drawLine(cx + 6, dropTop, cx + 4, dropBot);
+            dc.setPenWidth(1);
+            return;
+        }
+
+        // Thunderstorm
+        if (condition == Weather.CONDITION_THUNDERSTORMS ||
+            condition == Weather.CONDITION_SCATTERED_THUNDERSTORMS ||
+            condition == Weather.CONDITION_CHANCE_OF_THUNDERSTORMS) {
+            drawCloudShape(dc, cx, cy - 2, w, (h * 0.65).toNumber(), COLOR_MUTED);
+            dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
+            dc.setPenWidth(2);
+            dc.drawLine(cx + 1, cy + 1, cx - 2, cy + 4);
+            dc.drawLine(cx - 2, cy + 4, cx + 2, cy + 4);
+            dc.drawLine(cx + 2, cy + 4, cx - 1, cy + (h / 2));
+            dc.setPenWidth(1);
+            return;
+        }
+
+        // Snow / Sleet / Hail
+        if (condition == Weather.CONDITION_SNOW ||
+            condition == Weather.CONDITION_LIGHT_SNOW ||
+            condition == Weather.CONDITION_HEAVY_SNOW ||
+            condition == Weather.CONDITION_RAIN_SNOW ||
+            condition == Weather.CONDITION_HAIL ||
+            condition == Weather.CONDITION_ICE ||
+            condition == Weather.CONDITION_FREEZING_RAIN) {
+            drawCloudShape(dc, cx, cy - 2, w, (h * 0.65).toNumber(), COLOR_MUTED);
+            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+            var snowY = cy + (h * 0.35).toNumber();
+            dc.fillCircle(cx - 4, snowY, 1);
+            dc.fillCircle(cx + 1, snowY + 1, 1);
+            dc.fillCircle(cx + 5, snowY - 1, 1);
+            return;
+        }
+
+        // Windy
+        if (condition == Weather.CONDITION_WINDY) {
+            dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+            dc.setPenWidth(2);
+            dc.drawLine(x + 2, cy - 3, x + w - 4, cy - 3);
+            dc.drawLine(x, cy + 1, x + w - 1, cy + 1);
+            dc.drawLine(x + 3, cy + 5, x + w - 3, cy + 5);
+            dc.setPenWidth(1);
+            return;
+        }
+
+        // Default: Cloudy / Fog / Unknown
+        drawCloudShape(dc, cx, cy, w, (h * 0.72).toNumber(), COLOR_MUTED);
+    }
+
+    private function drawCloudShape(dc as Dc, cx as Number, cy as Number, w as Number, h as Number, color as Number) as Void {
+        var baseH = (h * 0.55).toNumber();
+        var baseY = cy + (h / 2) - baseH;
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.fillRoundedRectangle(cx - (w / 2), baseY, w, baseH, (baseH / 2).toNumber());
+        dc.fillCircle(cx - (w * 0.14).toNumber(), baseY, (w * 0.24).toNumber());
+        dc.fillCircle(cx + (w * 0.14).toNumber(), baseY + 1, (w * 0.18).toNumber());
+    }
+
     private function drawSteps(dc as Dc, cx as Number, w as Number, h as Number) as Void {
         var info = ActivityMonitor.getInfo();
         var steps = (info.steps != null) ? (info.steps as Number) : 0;
@@ -164,7 +303,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             ratio = 1.0;
         }
 
-        var labelY = (h * 0.71).toNumber();
+        var labelY = (h * 0.74).toNumber();
         var stepsText = steps.toString();
         var iconH = getIconHeight(dc);
         var iconW = iconH;
@@ -184,7 +323,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         );
 
         var fillColor = (ratio >= 1.0) ? Graphics.COLOR_WHITE : COLOR_ACCENT;
-        drawProgressBar(dc, cx, (h * 0.75).toNumber(), (w * 0.42).toNumber(), ratio, fillColor);
+        drawProgressBar(dc, cx, (h * 0.78).toNumber(), (w * 0.42).toNumber(), ratio, fillColor);
     }
 
     private function drawStress(dc as Dc, cx as Number, w as Number, h as Number) as Void {
@@ -203,7 +342,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             }
         }
 
-        var labelY = (h * 0.83).toNumber();
+        var labelY = (h * 0.85).toNumber();
         var iconH = getIconHeight(dc);
         var iconW = (iconH * 1.25).toNumber();
         var gap = 7;
@@ -225,7 +364,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         if (ratio > 1.0) {
             ratio = 1.0;
         }
-        drawProgressBar(dc, cx, (h * 0.87).toNumber(), (w * 0.28).toNumber(), ratio, stressColor);
+        drawProgressBar(dc, cx, (h * 0.89).toNumber(), (w * 0.28).toNumber(), ratio, stressColor);
     }
 
     private function drawProgressBar(dc as Dc, cx as Number, barY as Number, barW as Number, ratio as Float, fillColor as Number) as Void {
