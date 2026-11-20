@@ -1,6 +1,7 @@
 import Toybox.ActivityMonitor;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Math;
 import Toybox.System;
 import Toybox.Time;
 import Toybox.Time.Gregorian;
@@ -60,7 +61,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         }
         drawNotifications(dc, leftRightEdgeX, topCenterY - 14);
         drawAlarms(dc, leftRightEdgeX, topCenterY + 14);
-        drawBattery(dc, rightStartX, topCenterY);
+        drawBattery(dc, rightStartX, topCenterY, clockTime.sec);
 
         // 2. Center: Digital Time
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
@@ -73,7 +74,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         );
 
         // 3. Below Time: Date + Weather Icon + Temp
-        drawDateAndWeather(dc, cx, (h * 0.62).toNumber());
+        drawDateAndWeather(dc, cx, (h * 0.62).toNumber(), clockTime.sec);
 
         // 4. Steps + Minimalist Progress Bar
         drawSteps(dc, cx, w, h);
@@ -145,7 +146,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         return tempC.toNumber().toString() + "°C";
     }
 
-    private function drawDateAndWeather(dc as Dc, cx as Number, cy as Number) as Void {
+    private function drawDateAndWeather(dc as Dc, cx as Number, cy as Number, sec as Number) as Void {
         var dateText = formatDate();
         var conditions = Weather.getCurrentConditions();
         var tempText = formatTemperature(conditions);
@@ -173,7 +174,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         );
         x += dateW + sectionGap;
 
-        drawWeatherIcon(dc, x, cy, iconW, iconH, condition);
+        drawWeatherIcon(dc, x, cy, iconW, iconH, condition, sec);
         x += iconW + iconGap;
 
         dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
@@ -186,35 +187,71 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         );
     }
 
-    private function drawWeatherIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, condition as Number) as Void {
+    private function drawWeatherIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, condition as Number, sec as Number) as Void {
         var cx = x + (w / 2);
 
-        // Clear / Sunny
+        // Clear / Sunny (static 8 main rays + pulsing intermediate rays)
         if (condition == Weather.CONDITION_CLEAR ||
             condition == Weather.CONDITION_FAIR ||
             condition == Weather.CONDITION_MOSTLY_CLEAR) {
-            var r = (h * 0.28).toNumber();
-            if (r < 3) { r = 3; }
+            var r = (h * 0.31).toNumber();
+            if (r < 4) { r = 4; }
             dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
             dc.fillCircle(cx, cy, r);
             dc.setPenWidth(2);
-            var rayOut = (h * 0.48).toNumber();
             var rayIn = r + 2;
+            var rayOut = (h * 0.54).toNumber();
+            var diagIn = (rayIn * 0.71).toNumber();
+            var diagOut = (rayOut * 0.71).toNumber();
+            // 8 static main rays (4 cardinal + 4 diagonal)
             dc.drawLine(cx, cy - rayOut, cx, cy - rayIn);
             dc.drawLine(cx, cy + rayIn, cx, cy + rayOut);
             dc.drawLine(cx - rayOut, cy, cx - rayIn, cy);
             dc.drawLine(cx + rayIn, cy, cx + rayOut, cy);
+            dc.drawLine(cx - diagOut, cy - diagOut, cx - diagIn, cy - diagIn);
+            dc.drawLine(cx + diagIn, cy - diagIn, cx + diagOut, cy - diagOut);
+            dc.drawLine(cx - diagOut, cy + diagOut, cx - diagIn, cy + diagIn);
+            dc.drawLine(cx + diagIn, cy + diagIn, cx + diagOut, cy + diagOut);
+
+            // 8 smaller intermediate rays that pulse between small and medium (always visible)
+            var medLen = rayOut - rayIn - 1;
+            if (medLen < 4) { medLen = 4; }
+            var smallLen = medLen - 2;
+            var extraLen = (sec % 2 == 0) ? smallLen : medLen;
+            var subOut = rayIn + extraLen;
+            dc.setColor(0xFBBF24, Graphics.COLOR_TRANSPARENT);
+            dc.setPenWidth(1);
+            for (var i = 0; i < 8; i++) {
+                var angle = (i * (Math.PI / 4.0)) + (Math.PI / 8.0);
+                var cosA = Math.cos(angle);
+                var sinA = Math.sin(angle);
+                dc.drawLine(
+                    cx + (rayIn * cosA).toNumber(),
+                    cy + (rayIn * sinA).toNumber(),
+                    cx + (subOut * cosA).toNumber(),
+                    cy + (subOut * sinA).toNumber()
+                );
+            }
             dc.setPenWidth(1);
             return;
         }
 
-        // Partly Cloudy
+        // Partly Cloudy (drifting cloud in front of amber sun)
         if (condition == Weather.CONDITION_PARTLY_CLOUDY ||
             condition == Weather.CONDITION_PARTLY_CLEAR ||
             condition == Weather.CONDITION_MOSTLY_CLOUDY) {
+            var sunX = x + (w * 0.68).toNumber();
+            var sunY = cy - (h * 0.22).toNumber();
+            var sunR = (h * 0.34).toNumber();
+            if (sunR < 5) { sunR = 5; }
+
             dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
-            dc.fillCircle(x + (w * 0.68).toNumber(), cy - (h * 0.22).toNumber(), (h * 0.22).toNumber());
-            drawCloudShape(dc, cx - 1, cy + 2, w - 2, (h * 0.72).toNumber(), Graphics.COLOR_WHITE);
+            dc.fillCircle(sunX, sunY, sunR);
+
+            // Drifting foreground cloud
+            var pcPhase = sec % 4;
+            var pcDrift = (pcPhase == 0) ? -2 : ((pcPhase == 2) ? 2 : 0);
+            drawCloudShape(dc, cx - 1 + pcDrift, cy + 2, w - 2, (h * 0.70).toNumber(), Graphics.COLOR_WHITE);
             return;
         }
 
@@ -226,29 +263,37 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             condition == Weather.CONDITION_LIGHT_SHOWERS ||
             condition == Weather.CONDITION_HEAVY_SHOWERS ||
             condition == Weather.CONDITION_CHANCE_OF_SHOWERS) {
-            drawCloudShape(dc, cx, cy - 2, w, (h * 0.65).toNumber(), COLOR_MUTED);
+            drawCloudShape(dc, cx, cy - 5, w, (h * 0.52).toNumber(), COLOR_MUTED);
             dc.setColor(0x38BDF8, Graphics.COLOR_TRANSPARENT);
-            dc.setPenWidth(2);
-            var dropTop = cy + 2;
-            var dropBot = cy + (h / 2);
-            dc.drawLine(cx - 4, dropTop, cx - 6, dropBot);
-            dc.drawLine(cx + 1, dropTop, cx - 1, dropBot);
-            dc.drawLine(cx + 6, dropTop, cx + 4, dropBot);
-            dc.setPenWidth(1);
+            var dropBaseY = cy + 6;
+            drawRaindrop(dc, cx - 11, dropBaseY + ((sec % 3) * 2));
+            drawRaindrop(dc, cx - 4,  dropBaseY + (((sec + 1) % 3) * 2));
+            drawRaindrop(dc, cx + 4,  dropBaseY + (((sec + 2) % 3) * 2));
+            drawRaindrop(dc, cx + 11, dropBaseY + (((sec + 1) % 3) * 2));
             return;
         }
 
-        // Thunderstorm
+        // Thunderstorm (organic non-sequential flashing bolts)
         if (condition == Weather.CONDITION_THUNDERSTORMS ||
             condition == Weather.CONDITION_SCATTERED_THUNDERSTORMS ||
             condition == Weather.CONDITION_CHANCE_OF_THUNDERSTORMS) {
-            drawCloudShape(dc, cx, cy - 2, w, (h * 0.65).toNumber(), COLOR_MUTED);
-            dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
-            dc.setPenWidth(2);
-            dc.drawLine(cx + 1, cy + 1, cx - 2, cy + 4);
-            dc.drawLine(cx - 2, cy + 4, cx + 2, cy + 4);
-            dc.drawLine(cx + 2, cy + 4, cx - 1, cy + (h / 2));
-            dc.setPenWidth(1);
+            // Bitmask per second: 1=left, 2=center, 4=right
+            var mask = [2, 4, 1, 0, 5, 2, 0][sec % 7];
+            var cloudColor = ((mask & 2) != 0) ? 0xA3A3A3 : COLOR_MUTED;
+            drawCloudShape(dc, cx, cy - 5, w, (h * 0.52).toNumber(), cloudColor);
+
+            if ((mask & 1) != 0) {
+                dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
+                drawLightningBolt(dc, cx - 9, cy + 2, 1.0);
+            }
+            if ((mask & 2) != 0) {
+                dc.setColor(0xFEF08A, Graphics.COLOR_TRANSPARENT);
+                drawLightningBolt(dc, cx, cy + 2, 1.35);
+            }
+            if ((mask & 4) != 0) {
+                dc.setColor(0xF59E0B, Graphics.COLOR_TRANSPARENT);
+                drawLightningBolt(dc, cx + 9, cy + 2, 1.0);
+            }
             return;
         }
 
@@ -260,28 +305,151 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             condition == Weather.CONDITION_HAIL ||
             condition == Weather.CONDITION_ICE ||
             condition == Weather.CONDITION_FREEZING_RAIN) {
-            drawCloudShape(dc, cx, cy - 2, w, (h * 0.65).toNumber(), COLOR_MUTED);
-            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-            var snowY = cy + (h * 0.35).toNumber();
-            dc.fillCircle(cx - 4, snowY, 1);
-            dc.fillCircle(cx + 1, snowY + 1, 1);
-            dc.fillCircle(cx + 5, snowY - 1, 1);
+            // 3 crystalline snowflakes gently floating & falling
+            var sPhase = sec % 4;
+            var bigSway = (sPhase == 0) ? -1 : ((sPhase == 2) ? 1 : 0);
+            var bigDrop = (sec % 2 == 0) ? 0 : 1;
+            drawSnowflake(dc, cx - 9 + bigSway, cy + 1 + bigDrop, 10, Graphics.COLOR_WHITE);
+
+            var medSway = (sec % 2 == 0) ? 1 : -1;
+            var medDrop = (sec % 3) * 2;
+            drawSnowflake(dc, cx + 11 + medSway, cy - 8 + medDrop, 6, 0xBAE6FD);
+
+            var smlSway = (sec % 2 == 0) ? -1 : 1;
+            var smlDrop = ((sec + 1) % 3) * 2 - 2;
+            drawSnowflake(dc, cx + 7 + smlSway, cy + 9 + smlDrop, 4, 0xBAE6FD);
             return;
         }
 
-        // Windy
+        // Windy (moving gusts + blowing leaves)
         if (condition == Weather.CONDITION_WINDY) {
-            dc.setColor(COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+            var sway = (sec % 2 == 0) ? 0 : 2;
+            dc.setColor(0xCBD5E1, Graphics.COLOR_TRANSPARENT);
             dc.setPenWidth(2);
-            dc.drawLine(x + 2, cy - 3, x + w - 4, cy - 3);
-            dc.drawLine(x, cy + 1, x + w - 1, cy + 1);
-            dc.drawLine(x + 3, cy + 5, x + w - 3, cy + 5);
+
+            // Top gust (curls up)
+            var topEndX = x + w - 8 + sway;
+            dc.drawLine(x + 1 + sway, cy - 5, topEndX, cy - 5);
+            dc.drawArc(topEndX, cy - 8, 3, Graphics.ARC_COUNTER_CLOCKWISE, 270, 135);
+
+            // Middle gust (longest, opposite sway)
+            var midSway = 2 - sway;
+            var midEndX = x + w - 5 + midSway;
+            dc.drawLine(x + midSway, cy, midEndX, cy);
+            dc.drawArc(midEndX, cy - 3, 3, Graphics.ARC_COUNTER_CLOCKWISE, 270, 120);
+
+            // Bottom gust (curls down)
+            var botEndX = x + w - 8 + sway;
+            dc.drawLine(x + 3 + sway, cy + 5, botEndX, cy + 5);
+            dc.drawArc(botEndX, cy + 8, 3, Graphics.ARC_CLOCKWISE, 90, 225);
             dc.setPenWidth(1);
+
+            // Two leaves drifting left-to-right in the wind
+            var step1 = sec % 5;
+            var lx1 = x + 2 + ((w - 4) * step1 / 4).toNumber();
+            var ly1 = cy - 3 + ((step1 % 2 == 0) ? -2 : 1);
+            drawLeaf(dc, lx1, ly1, 0x84CC16);
+
+            var step2 = (sec + 2) % 5;
+            var lx2 = x + 2 + ((w - 4) * step2 / 4).toNumber();
+            var ly2 = cy + 3 + ((step2 % 2 == 0) ? 2 : -1);
+            drawLeaf(dc, lx2, ly2, 0xF59E0B);
             return;
         }
 
-        // Default: Cloudy / Fog / Unknown
-        drawCloudShape(dc, cx, cy, w, (h * 0.72).toNumber(), COLOR_MUTED);
+        // Fog / Mist / Hazy (cloud + gently drifting layered mist banks)
+        if (condition == Weather.CONDITION_FOG ||
+            condition == Weather.CONDITION_MIST ||
+            condition == Weather.CONDITION_HAZY ||
+            condition == Weather.CONDITION_SMOKE ||
+            condition == Weather.CONDITION_DUST) {
+            var fogPhase = sec % 4;
+            var fogDrift = (fogPhase == 0) ? -2 : ((fogPhase == 2) ? 2 : 0);
+            drawCloudShape(dc, cx, cy - 5, (w * 0.86).toNumber(), (h * 0.48).toNumber(), COLOR_MUTED);
+            dc.setColor(0xA3A3A3, Graphics.COLOR_TRANSPARENT);
+            dc.fillRoundedRectangle(x + 2 + fogDrift, cy + 3, w - 5, 2, 1);
+            dc.setColor(0x777777, Graphics.COLOR_TRANSPARENT);
+            dc.fillRoundedRectangle(x + 4 - fogDrift, cy + 7, w - 8, 2, 1);
+            dc.setColor(0x555555, Graphics.COLOR_TRANSPARENT);
+            dc.fillRoundedRectangle(x + 3 + fogDrift, cy + 11, w - 6, 2, 1);
+            return;
+        }
+
+        // Default: Cloudy / Unknown (animated parallax clouds)
+        var cloudPhase = sec % 4;
+        var drift = (cloudPhase == 0) ? -2 : ((cloudPhase == 2) ? 2 : 0);
+        // Darker background cloud drifting opposite
+        drawCloudShape(dc, cx + 3 - drift, cy - 3, (w * 0.78).toNumber(), (h * 0.54).toNumber(), 0x555555);
+        // Lighter foreground cloud drifting gently
+        drawCloudShape(dc, cx - 1 + drift, cy + 2, (w * 0.88).toNumber(), (h * 0.62).toNumber(), COLOR_MUTED);
+    }
+
+    private function drawLeaf(dc as Dc, lx as Number, ly as Number, color as Number) as Void {
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.fillPolygon([
+            [lx - 3, ly + 1],
+            [lx,     ly - 2],
+            [lx + 3, ly - 1],
+            [lx,     ly + 2]
+        ]);
+    }
+
+    private function drawSnowflake(dc as Dc, sx as Number, sy as Number, r as Number, color as Number) as Void {
+        var dx = (r * 0.87).toNumber();
+        var dy = (r * 0.50).toNumber();
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.setPenWidth(1);
+        // 6 main crystal arms
+        dc.drawLine(sx, sy - r, sx, sy + r);
+        dc.drawLine(sx - dx, sy - dy, sx + dx, sy + dy);
+        dc.drawLine(sx - dx, sy + dy, sx + dx, sy - dy);
+
+        // Delicate V-shaped crystal branches for medium & large snowflakes
+        if (r >= 5) {
+            var b = (r >= 7) ? 2 : 1;
+            var vPos = (r * 0.62).toNumber();
+            // Top & bottom V-branches
+            dc.drawLine(sx - b, sy - vPos - b, sx, sy - vPos);
+            dc.drawLine(sx + b, sy - vPos - b, sx, sy - vPos);
+            dc.drawLine(sx - b, sy + vPos + b, sx, sy + vPos);
+            dc.drawLine(sx + b, sy + vPos + b, sx, sy + vPos);
+
+            // Diagonal V-branches
+            var bx = (dx * 0.60).toNumber();
+            var by = (dy * 0.60).toNumber();
+            // Upper-left
+            dc.drawLine(sx - bx, sy - by, sx - bx - 1, sy - by - b - 1);
+            dc.drawLine(sx - bx, sy - by, sx - bx - b - 1, sy - by + 1);
+            // Lower-right
+            dc.drawLine(sx + bx, sy + by, sx + bx + 1, sy + by + b + 1);
+            dc.drawLine(sx + bx, sy + by, sx + bx + b + 1, sy + by - 1);
+            // Lower-left
+            dc.drawLine(sx - bx, sy + by, sx - bx - 1, sy + by + b + 1);
+            dc.drawLine(sx - bx, sy + by, sx - bx - b - 1, sy + by - 1);
+            // Upper-right
+            dc.drawLine(sx + bx, sy - by, sx + bx + 1, sy - by - b - 1);
+            dc.drawLine(sx + bx, sy - by, sx + bx + b + 1, sy - by + 1);
+        }
+    }
+
+    private function drawLightningBolt(dc as Dc, bx as Number, topY as Number, scale as Float) as Void {
+        dc.fillPolygon([
+            [bx + (2 * scale).toNumber(), topY],
+            [bx - (3 * scale).toNumber(), topY + (5 * scale).toNumber()],
+            [bx,                          topY + (5 * scale).toNumber()],
+            [bx - (2 * scale).toNumber(), topY + (10 * scale).toNumber()],
+            [bx + (3 * scale).toNumber(), topY + (4 * scale).toNumber()],
+            [bx,                          topY + (4 * scale).toNumber()]
+        ]);
+    }
+
+    private function drawRaindrop(dc as Dc, dx as Number, dy as Number) as Void {
+        dc.fillCircle(dx, dy + 1, 2);
+        dc.fillPolygon([
+            [dx, dy - 3],
+            [dx - 2, dy + 1],
+            [dx + 2, dy + 1]
+        ]);
     }
 
     private function drawCloudShape(dc as Dc, cx as Number, cy as Number, w as Number, h as Number, color as Number) as Void {
@@ -449,9 +617,10 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         dc.setPenWidth(1);
     }
 
-    private function drawBattery(dc as Dc, x as Number, cy as Number) as Void {
+    private function drawBattery(dc as Dc, x as Number, cy as Number, sec as Number) as Void {
         var stats = System.getSystemStats();
         var battery = stats.battery.toNumber();
+        var isCharging = (stats has :charging && stats.charging != null && stats.charging == true);
         var batText = battery.toString() + "%";
 
         var gap = 7;
@@ -465,18 +634,38 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             batColor = 0xF59E0B; // 21-50% amber
         }
 
-        // Battery icon + percentage
+        // Battery icon outline + terminal
         var batIconY = cy - (batIconH / 2);
+        var bodyW = batIconW - 3;
         dc.setColor(batColor, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(2);
-        dc.drawRectangle(x, batIconY, batIconW - 3, batIconH);
+        dc.drawRectangle(x, batIconY, bodyW, batIconH);
         dc.setPenWidth(1);
-        dc.fillRectangle(x + batIconW - 3, batIconY + (batIconH * 0.28).toNumber(), 3, (batIconH * 0.44).toNumber());
+        dc.fillRectangle(x + bodyW, batIconY + (batIconH * 0.28).toNumber(), 3, (batIconH * 0.44).toNumber());
+
+        // Animated fill when charging, static fill otherwise
+        var displayLevel = battery.toFloat();
+        if (isCharging) {
+            var frame = sec % 4;
+            if (battery < 90) {
+                displayLevel = battery.toFloat() + ((100.0 - battery.toFloat()) * frame / 3.0);
+            } else {
+                displayLevel = 25.0 * (frame + 1);
+            }
+        }
 
         var maxInnerW = batIconW - 9;
-        var innerW = (maxInnerW * battery / 100.0).toNumber();
+        var innerW = (maxInnerW * displayLevel / 100.0).toNumber();
+        if (innerW > maxInnerW) {
+            innerW = maxInnerW;
+        }
         if (innerW > 0) {
             dc.fillRectangle(x + 3, batIconY + 3, innerW, batIconH - 6);
+        }
+
+        // Lightning bolt overlay while charging
+        if (isCharging) {
+            drawChargingBolt(dc, x + (bodyW / 2), cy, batIconH);
         }
 
         dc.setColor((battery <= 20) ? COLOR_ACCENT : COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
@@ -487,6 +676,27 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             batText,
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
         );
+    }
+
+    private function drawChargingBolt(dc as Dc, cx as Number, cy as Number, h as Number) as Void {
+        var halfH = (h / 2).toNumber() - 1;
+        if (halfH < 4) {
+            halfH = 4;
+        }
+        // Subtle black outline for contrast against the green fill
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
+        dc.setPenWidth(3);
+        dc.drawLine(cx + 2, cy - halfH, cx - 2, cy);
+        dc.drawLine(cx - 2, cy, cx + 2, cy);
+        dc.drawLine(cx + 2, cy, cx - 2, cy + halfH);
+
+        // Crisp white bolt
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        dc.setPenWidth(2);
+        dc.drawLine(cx + 2, cy - halfH, cx - 2, cy);
+        dc.drawLine(cx - 2, cy, cx + 2, cy);
+        dc.drawLine(cx + 2, cy, cx - 2, cy + halfH);
+        dc.setPenWidth(1);
     }
 
     private function drawNotificationIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, color as Number) as Void {
