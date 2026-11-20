@@ -1,3 +1,4 @@
+import Toybox.Activity;
 import Toybox.ActivityMonitor;
 import Toybox.Graphics;
 import Toybox.Lang;
@@ -79,8 +80,8 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         // 4. Steps + Minimalist Progress Bar
         drawSteps(dc, cx, w, h);
 
-        // 5. Bottom: Stress + Minimalist Progress Bar
-        drawStress(dc, cx, w, h);
+        // 5. Bottom: Stress + Heart Rate
+        drawStressAndHeartRate(dc, cx, h);
     }
 
     function onHide() as Void {
@@ -494,7 +495,7 @@ class SnWatchFaceView extends WatchUi.WatchFace {
         drawProgressBar(dc, cx, (h * 0.78).toNumber(), (w * 0.42).toNumber(), ratio, fillColor);
     }
 
-    private function drawStress(dc as Dc, cx as Number, w as Number, h as Number) as Void {
+    private function drawStressAndHeartRate(dc as Dc, cx as Number, h as Number) as Void {
         var actInfo = ActivityMonitor.getInfo();
         var stress = actInfo.stressScore;
         var hasStress = (stress != null && (stress as Number) >= 0);
@@ -510,29 +511,84 @@ class SnWatchFaceView extends WatchUi.WatchFace {
             }
         }
 
-        var labelY = (h * 0.85).toNumber();
-        var iconH = getIconHeight(dc);
-        var iconW = (iconH * 1.25).toNumber();
-        var gap = 7;
-        var textW = dc.getTextWidthInPixels(stressText, Graphics.FONT_XTINY);
-        var x = cx - ((iconW + gap + textW) / 2);
+        var hr = getCurrentHeartRate();
+        var hasHr = (hr != null);
+        var hrText = hasHr ? (hr as Number).toString() : "--";
 
-        drawStressIcon(dc, x, labelY, iconW, iconH, stressColor);
+        var labelY = (h * 0.86).toNumber();
+        var iconH = getIconHeight(dc);
+        var stressIconW = (iconH * 1.25).toNumber();
+        var heartIconW = (iconH * 1.10).toNumber();
+        var iconGap = 7;
+        var itemGap = 20;
+
+        var stressTextW = dc.getTextWidthInPixels(stressText, Graphics.FONT_XTINY);
+        var hrTextW = dc.getTextWidthInPixels(hrText, Graphics.FONT_XTINY);
+        var totalW = stressIconW + iconGap + stressTextW + itemGap + heartIconW + iconGap + hrTextW;
+        var x = cx - (totalW / 2);
+
+        // Heart rate icon + value
+        var heartColor = hasHr ? COLOR_ACCENT : COLOR_MUTED;
+        drawHeartIcon(dc, x, labelY, heartIconW, iconH, heartColor);
+        x += heartIconW + iconGap;
+
+        dc.setColor(hasHr ? Graphics.COLOR_WHITE : COLOR_MUTED, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            x,
+            labelY,
+            Graphics.FONT_XTINY,
+            hrText,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
+        );
+        x += hrTextW + itemGap;
+
+        // Stress icon + value
+        drawStressIcon(dc, x, labelY, stressIconW, iconH, stressColor);
+        x += stressIconW + iconGap;
 
         dc.setColor(stressColor, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            x + iconW + gap,
+            x,
             labelY,
             Graphics.FONT_XTINY,
             stressText,
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER
         );
+    }
 
-        var ratio = hasStress ? (stressVal.toFloat() / 100.0) : 0.0;
-        if (ratio > 1.0) {
-            ratio = 1.0;
+    private function getCurrentHeartRate() as Number? {
+        var activityInfo = Activity.getActivityInfo();
+        if (activityInfo != null && activityInfo.currentHeartRate != null) {
+            return activityInfo.currentHeartRate as Number;
         }
-        drawProgressBar(dc, cx, (h * 0.89).toNumber(), (w * 0.28).toNumber(), ratio, stressColor);
+        if (ActivityMonitor has :getHeartRateHistory) {
+            var hrIter = ActivityMonitor.getHeartRateHistory(1, true);
+            if (hrIter != null) {
+                var sample = hrIter.next();
+                if (sample != null && sample.heartRate != ActivityMonitor.INVALID_HR_SAMPLE) {
+                    return sample.heartRate;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function drawHeartIcon(dc as Dc, x as Number, cy as Number, w as Number, h as Number, color as Number) as Void {
+        var r = (h * 0.27).toNumber();
+        if (r < 3) { r = 3; }
+        var halfH = (h / 2).toNumber();
+        var center = x + (w / 2);
+        var lobeY = cy - (h * 0.14).toNumber();
+        var lobeOffset = (r * 0.92).toNumber();
+
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.fillCircle(center - lobeOffset, lobeY, r);
+        dc.fillCircle(center + lobeOffset, lobeY, r);
+        dc.fillPolygon([
+            [center - lobeOffset - r + 1, lobeY + 1],
+            [center + lobeOffset + r - 1, lobeY + 1],
+            [center, cy + halfH]
+        ]);
     }
 
     private function drawProgressBar(dc as Dc, cx as Number, barY as Number, barW as Number, ratio as Float, fillColor as Number) as Void {
